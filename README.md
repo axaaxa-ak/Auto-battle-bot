@@ -1,0 +1,2 @@
+# Auto-battle-bot
+たたかうよ
