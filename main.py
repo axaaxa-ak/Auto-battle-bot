@@ -154,6 +154,13 @@ async def on_raw_reaction_add(payload):
         if isinstance(ch, discord.Thread): await ch.delete()
 
 # --- 実行セクション ---
+import os
+
 if __name__ == "__main__":
-    keep_alive() # Flaskサーバーを別スレッドで起動
-    bot.run("MTQ4MzM4NDQyMzYzMzM5MTY2Ng.G6odVV.6Sa2w65VgytZkYQeyphzUo1jjTv034NepMWQ3U")
+    keep_alive()
+    # "DISCORD_TOKEN" という名前の環境変数から中身を読み出す設定
+    token = os.getenv("DISCORD_TOKEN") 
+    if token:
+        bot.run(token)
+    else:
+        print("エラー: RenderのEnvironment設定にトークンがありません。")
