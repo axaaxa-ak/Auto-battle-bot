@@ -4,25 +4,34 @@ import random
 import asyncio
 import sqlite3
 import json
+from flask import Flask
+from threading import Thread
 
-# --- 設定データ ---
+# --- Flask設定 (Renderのスリープ防止用) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!", 200 # Cronitorに 200 OK を返す
+
+def run():
+    # Renderはデフォルトでポート10000等を使いますが、8080で設定しておけばOKです
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.daemon = True # メインプログラム終了時に一緒に終了させる
+    t.start()
+
+# --- ゲーム設定データ ---
 RARITIES = ["Normal", "Rare", "SuperRare", "Epic", "Legendary", "Mythic", "Artifact", "Mirage", "Ancient", "Genesis", "Master"]
-# ガチャ確率 (合計1.0)
 RATES = [0.70, 0.18, 0.06, 0.03, 0.01, 0.008, 0.006, 0.004, 0.001, 0.0009, 0.0001]
 
-# ステータス上昇値 [攻撃力, HP, スタミナ]
 STATS_TABLE = {
-    "Normal": [10, 50, 2],
-    "Rare": [50, 200, 5],
-    "SuperRare": [150, 600, 15],
-    "Epic": [400, 1500, 40],
-    "Legendary": [1000, 5000, 100],
-    "Mythic": [2500, 12000, 250],
-    "Artifact": [6000, 30000, 600],
-    "Mirage": [15000, 80000, 1500],
-    "Ancient": [40000, 250000, 4000],
-    "Genesis": [120000, 800000, 10000],
-    "Master": [1000000, 10000000, 99999]
+    "Normal": [10, 50, 2], "Rare": [50, 200, 5], "SuperRare": [150, 600, 15],
+    "Epic": [400, 1500, 40], "Legendary": [1000, 5000, 100], "Mythic": [2500, 12000, 250],
+    "Artifact": [6000, 30000, 600], "Mirage": [15000, 80000, 1500], "Ancient": [40000, 250000, 4000],
+    "Genesis": [120000, 800000, 10000], "Master": [1000000, 10000000, 99999]
 }
 
 class RPGCore(commands.Bot):
@@ -69,7 +78,7 @@ def get_final_stats(u):
             atk += STATS_TABLE[rarity][0]; hp += STATS_TABLE[rarity][1]; stm += STATS_TABLE[rarity][2]
     return hp, stm, atk
 
-# --- コマンド実装 ---
+# --- Discordコマンド ---
 
 @bot.command()
 async def stat(ctx):
@@ -79,56 +88,33 @@ async def stat(ctx):
     await ctx.send(res)
 
 @bot.command()
-async def add(ctx, stat_name: str, amount: int):
-    u = bot.get_user(ctx.author.id)
-    if amount <= 0 or u["sp"] < amount: return await ctx.send("Invalid amount or No SP.")
-    if stat_name.lower() in ["str", "vit", "dex"]:
-        u[stat_name.lower()] += amount; u["sp"] -= amount
-        bot.save_user(ctx.author.id, u)
-        await ctx.send(f"Added {amount} to {stat_name.upper()}.")
-
-@bot.command()
 async def gacha(ctx):
     u = bot.get_user(ctx.author.id)
-    if u["gold"] < 1000: return await ctx.send("Not enough Gold (1000G required).")
+    if u["gold"] < 1000: return await ctx.send("Not enough Gold.")
     u["gold"] -= 1000
     res = random.choices(RARITIES, weights=RATES)[0]
     u["items"].append(res)
     bot.save_user(ctx.author.id, u)
-    await ctx.send(f"Gacha result: [{res}] Item obtained.")
-    if res == "Master":
-        owner = ctx.guild.owner
-        if owner: await owner.send(f"[ALERT] {ctx.author.name} obtained MASTER rank item.")
+    await ctx.send(f"Gacha result: [{res}]")
 
 @bot.command()
 async def items(ctx):
     u = bot.get_user(ctx.author.id)
-    if not u["items"]: return await ctx.send("No items.")
-    res = f"--- INVENTORY: {ctx.author.name} ---\n"
+    if not u["items"]: return await ctx.send("Inventory empty.")
+    res = f"--- ITEMS: {ctx.author.name} ---\n"
     for idx, item in enumerate(u["items"]):
         eq = " [E]" if item in u["equips"].values() else ""
         res += f"{idx}: [{item}]{eq}\n"
-    res += "--- /equip [weapon/armor] [index] ---"
     await ctx.send(res)
 
 @bot.command()
 async def equip(ctx, slot: str, index: int):
     u = bot.get_user(ctx.author.id)
     if slot not in ["weapon", "armor"] or not (0 <= index < len(u["items"])):
-        return await ctx.send("Invalid slot or index.")
+        return await ctx.send("Invalid slot/index.")
     u["equips"][slot] = u["items"][index]
     bot.save_user(ctx.author.id, u)
     await ctx.send(f"Equipped {u['items'][index]} to {slot}.")
-
-@bot.command()
-async def reset(ctx):
-    u = bot.get_user(ctx.author.id)
-    cost = u["lv"] * 100
-    if u["gold"] < cost: return await ctx.send(f"Need {cost} Gold.")
-    u["gold"] -= cost; u["sp"] += (u["str"] + u["vit"] + u["dex"])
-    u["str"] = u["vit"] = u["dex"] = 0
-    bot.save_user(ctx.author.id, u)
-    await ctx.send(f"Reset complete. Paid {cost} Gold.")
 
 @bot.command()
 async def tansaku(ctx, turns: int):
@@ -142,34 +128,24 @@ async def tansaku(ctx, turns: int):
 
     for t in range(1, turns + 1):
         if not bot.active_threads.get(thread.id): break
-        if t % 10 == 0: # 10ターンごとにログ更新
-            # ダメージ計算 (ATKが高いと被ダメが減る簡易計算)
-            damage = max(1, random.randint(15, 40) - (atk // 1000))
-            hp_now -= damage
+        if t % 5 == 0:
+            hp_now -= random.randint(5, 20)
             if random.random() < 0.1: items_found.append(random.choices(RARITIES, RATES)[0])
             await thread.send(f"Turn {t}/{turns} | HP: {hp_now} | Items: {len(items_found)}")
             if hp_now <= 0: success = False; break
-        await asyncio.sleep(2) # 本来は 60 (1分)
+        await asyncio.sleep(2)
 
     u = bot.get_user(ctx.author.id)
     if success:
-        u["gold"] += (turns * 12); u["exp"] += (turns * 10); u["items"].extend(items_found)
-        # レベルアップ
-        while u["exp"] >= (u["lv"]**2)*100:
-            u["exp"] -= (u["lv"]**2)*100; u["lv"] += 1; u["sp"] += 5
-        await thread.send(f"=== SUCCESS ===\nGold +{turns*12}\nEXP +{turns*10}")
+        u["gold"] += (turns * 10); u["items"].extend(items_found)
+        # 簡易レベルアップ
+        if u["exp"] >= (u["lv"]**2)*100: u["lv"] += 1; u["sp"] += 5
+        await thread.send(f"=== SUCCESS ===\nGold +{turns*10}")
     else:
-        u["gold"] //= 3; await thread.send("=== DEFEAT ===\nGold 2/3 lost.")
+        u["gold"] //= 3; await thread.send("=== DEFEAT ===")
     
     bot.save_user(ctx.author.id, u)
-    msg = await thread.send("Reaction to delete thread.")
-    await msg.add_reaction("🗑️")
-
-@bot.command()
-async def kikan(ctx):
-    if ctx.channel.id in bot.active_threads:
-        bot.active_threads[ctx.channel.id] = False
-        await ctx.send("Returning early...")
+    await thread.send("Reaction 🗑️ to delete.")
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -177,4 +153,7 @@ async def on_raw_reaction_add(payload):
         ch = bot.get_channel(payload.channel_id)
         if isinstance(ch, discord.Thread): await ch.delete()
 
-bot.run("YOUR_BOT_TOKEN")
+# --- 実行セクション ---
+if __name__ == "__main__":
+    keep_alive() # Flaskサーバーを別スレッドで起動
+    bot.run("YOUR_BOT_TOKEN")
