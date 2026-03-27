@@ -156,11 +156,17 @@ async def on_raw_reaction_add(payload):
 # --- 実行セクション ---
 import os
 
+# --- 実行セクション ---
 if __name__ == "__main__":
-    keep_alive()
-    # "DISCORD_TOKEN" という名前の環境変数から中身を読み出す設定
-    token = os.getenv("DISCORD_TOKEN") 
+    keep_alive()  # Flaskサーバーを起動
+    
+    # Renderの「Environment」で設定する名前を呼び出す
+    token = os.getenv("DISCORD_TOKEN")
+    
     if token:
-        bot.run(token)
+        try:
+            bot.run(token)
+        except Exception as e:
+            print(f"起動エラーが発生しました: {e}")
     else:
-        print("エラー: RenderのEnvironment設定にトークンがありません。")
+        print("エラー: RenderのEnvironment設定に 'DISCORD_TOKEN' が見つかりません。")
