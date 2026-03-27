@@ -156,4 +156,4 @@ async def on_raw_reaction_add(payload):
 # --- 実行セクション ---
 if __name__ == "__main__":
     keep_alive() # Flaskサーバーを別スレッドで起動
-    bot.run("YOUR_BOT_TOKEN")
+    bot.run("MTQ4MzM4NDQyMzYzMzM5MTY2Ng.G67LP4.nAvLyQSqzfGzZ0P0GtmV00DkqtlvlwUO9l_p2I")
